@@ -1,0 +1,161 @@
+'use client'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import type { Profile, UserStat } from '@/lib/types'
+
+export default function DashboardPage() {
+  const router = useRouter()
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [stats, setStats] = useState<UserStat[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/login'); return }
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      if (!profileData?.onboarding_complete) {
+        router.push('/onboarding')
+        return
+      }
+
+      setProfile(profileData)
+
+      const { data: statsData } = await supabase
+        .from('user_stats')
+        .select('*, stat_categories(*)')
+        .eq('user_id', user.id)
+
+      if (statsData) setStats(statsData)
+      setLoading(false)
+    }
+    load()
+  }, [router])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
+  if (loading) return (
+    <main className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: '#0F1117' }}>
+      <p style={{ color: '#64748B' }}>Loading your build...</p>
+    </main>
+  )
+
+  return (
+    <main className="min-h-screen px-6 py-12"
+      style={{ backgroundColor: '#0F1117' }}>
+      <div className="max-w-md mx-auto space-y-8">
+
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <p className="text-xs tracking-[0.3em] uppercase"
+              style={{ color: '#7C3AED' }}>
+              STATOSPHERE
+            </p>
+            <h1 className="text-2xl font-black"
+              style={{ color: '#F1F5F9' }}>
+              @{profile?.username}
+            </h1>
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="text-sm px-4 py-2 rounded-xl border"
+            style={{ borderColor: '#2D3158', color: '#64748B' }}>
+            Sign out
+          </button>
+        </div>
+
+        {/* Becoming statement */}
+        <div className="p-5 rounded-2xl border"
+          style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
+          <p className="text-xs tracking-widest uppercase mb-2"
+            style={{ color: '#7C3AED' }}>
+            BECOMING
+          </p>
+          <p className="leading-relaxed"
+            style={{ color: '#F1F5F9' }}>
+            "{profile?.becoming_statement}"
+          </p>
+        </div>
+
+        {/* Stats */}
+        <div className="space-y-4">
+          <p className="text-xs tracking-[0.3em] uppercase"
+            style={{ color: '#64748B' }}>
+            YOUR STATS
+          </p>
+          {stats.map(stat => (
+            <div key={stat.id} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">
+                    {(stat as any).stat_categories?.icon}
+                  </span>
+                  <span className="font-bold text-sm"
+                    style={{ color: '#F1F5F9' }}>
+                    {(stat as any).stat_categories?.name}
+                  </span>
+                </div>
+                <span className="font-mono text-sm font-bold"
+                  style={{ color: '#A3E635' }}>
+                  {stat.current_value}
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full"
+                style={{ backgroundColor: '#1B1F3B' }}>
+                <div
+                  className="h-2 rounded-full transition-all duration-700"
+                  style={{
+                    width: `${stat.current_value}%`,
+                    backgroundColor: '#7C3AED',
+                    minWidth: stat.current_value > 0 ? '8px' : '0'
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Council placeholder */}
+        <div className="p-5 rounded-2xl border border-dashed text-center space-y-2"
+          style={{ borderColor: '#2D3158' }}>
+          <p className="font-bold" style={{ color: '#F1F5F9' }}>
+            Your Council is empty.
+          </p>
+          <p className="text-sm" style={{ color: '#64748B' }}>
+            Invite trusted people to shape your growth.
+          </p>
+          <button
+            className="mt-2 px-6 py-3 rounded-xl font-bold text-sm
+              transition-all active:scale-95"
+            style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
+            Build My Council →
+          </button>
+        </div>
+
+        {/* Tasks placeholder */}
+        <div className="p-5 rounded-2xl border border-dashed text-center space-y-2"
+          style={{ borderColor: '#2D3158' }}>
+          <p className="font-bold" style={{ color: '#F1F5F9' }}>
+            No tasks yet.
+          </p>
+          <p className="text-sm" style={{ color: '#64748B' }}>
+            Your Council hasn't assigned anything yet.
+          </p>
+        </div>
+
+      </div>
+    </main>
+  )
+}
