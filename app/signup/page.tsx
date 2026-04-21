@@ -3,17 +3,21 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState('')
+  const [fullName, setFullName] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = async () => {
-    if (!email) return
+  const handleSignup = async () => {
+    if (!email || !fullName) return
     setLoading(true)
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` }
+      options: {
+        emailRedirectTo: `${window.location.origin}/onboarding`,
+        data: { full_name: fullName }
+      }
     })
     if (!error) setSent(true)
     setLoading(false)
@@ -27,14 +31,14 @@ export default function LoginPage() {
           CHECK YOUR EMAIL
         </p>
         <h1 className="text-3xl font-black" style={{ color: '#F1F5F9' }}>
-          Your link is on its way.
+          Your build begins now.
         </h1>
         <p style={{ color: '#64748B' }}>
-          We sent a magic link to<br />
+          We sent a link to<br />
           <span style={{ color: '#F1F5F9' }}>{email}</span>
         </p>
         <p className="text-sm" style={{ color: '#64748B' }}>
-          Click the link in your email to enter Statosphere.
+          Click it to activate your account and start your build.
         </p>
       </div>
     </main>
@@ -50,11 +54,32 @@ export default function LoginPage() {
             STATOSPHERE
           </p>
           <h1 className="text-3xl font-black" style={{ color: '#F1F5F9' }}>
-            Welcome back.
+            Begin your build.
           </h1>
+          <p style={{ color: '#64748B' }}>
+            Create your account to get started.
+          </p>
         </div>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium" style={{ color: '#64748B' }}>
+              Your name
+            </label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              placeholder="First name is fine"
+              className="w-full px-4 py-4 rounded-2xl text-base outline-none border"
+              style={{
+                backgroundColor: '#1B1F3B',
+                borderColor: '#2D3158',
+                color: '#F1F5F9',
+              }}
+            />
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium" style={{ color: '#64748B' }}>
               Email address
@@ -63,7 +88,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              onKeyDown={e => e.key === 'Enter' && handleSignup()}
               placeholder="you@example.com"
               className="w-full px-4 py-4 rounded-2xl text-base outline-none border"
               style={{
@@ -75,19 +100,19 @@ export default function LoginPage() {
           </div>
 
           <button
-            onClick={handleLogin}
-            disabled={loading || !email}
+            onClick={handleSignup}
+            disabled={loading || !email || !fullName}
             className="w-full py-4 px-6 rounded-2xl font-bold text-base
               tracking-wide transition-all active:scale-95 disabled:opacity-50"
             style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
-            {loading ? 'Sending...' : 'Send Magic Link →'}
+            {loading ? 'Creating...' : 'Create My Account →'}
           </button>
         </div>
 
         <p className="text-center text-sm" style={{ color: '#64748B' }}>
-          No account?{' '}
-          <Link href="/signup" style={{ color: '#A3E635' }}>
-            Begin your build
+          Already have an account?{' '}
+          <Link href="/login" style={{ color: '#A3E635' }}>
+            Sign in
           </Link>
         </p>
 
