@@ -4,15 +4,34 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import type { Profile, UserStat, Task } from '@/lib/types'
 import Link from 'next/link'
+import {
+  getDaysUntilCycleEnd,
+  getCycleLabel,
+  getCycleUrgencyColor,
+  getStreakFlame,
+} from '@/lib/cycle'
+
+type Streak = {
+  stat_category_id: string
+  current_streak: number
+  longest_streak: number
+}
 
 export default function DashboardPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [stats, setStats] = useState<UserStat[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [streaks, setStreaks] = useState<Streak[]>([])
   const [councilCount, setCouncilCount] = useState(0)
   const [pendingReviews, setPendingReviews] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [nudging, setNudging] = useState(false)
+  const [nudged, setNudged] = useState(false)
+
+  const daysLeft = getDaysUntilCycleEnd()
+  const cycleLabel = getCycleLabel()
+  const urgencyColor = getCycleUrgencyColor(daysLeft)
 
   useEffect(() => {
     const load = async () => {
@@ -38,7 +57,14 @@ export default function DashboardPage() {
         .eq('user_id', user.id)
       if (statsData) setStats(statsData)
 
-      // Active tasks assigned to me
+      // Streaks
+      const { data: streaksData } = await supabase
+        .from('streaks')
+        .select('*')
+        .eq('user_id', user.id)
+      if (streaksData) setStreaks(streaksData)
+
+      // Tasks
       const { data: tasksData } = await supabase
         .from('tasks')
         .select('*, stat_categories(*)')
@@ -47,7 +73,7 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
       if (tasksData) setTasks(tasksData)
 
-      // Council count
+      // Council
       const { data: council } = await supabase
         .from('councils')
         .select('id')
@@ -63,7 +89,7 @@ export default function DashboardPage() {
         setCouncilCount(count || 0)
       }
 
-      // Pending reviews — submissions from councils I'm on
+      // Pending reviews
       const { data: memberOf } = await supabase
         .from('council_members')
         .select('council_id')
@@ -87,7 +113,6 @@ export default function DashboardPage() {
             .eq('status', 'pending')
             .in('task_id', taskIds.map((t: any) => t.id))
             .neq('user_id', user.id)
-
           setPendingReviews(reviewCount || 0)
         }
       }
@@ -97,9 +122,16 @@ export default function DashboardPage() {
     load()
   }, [router])
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
+  const handleNudge = async () => {
+    setNudging(true)
+    await fetch('/api/nudge-council', { method: 'POST' })
+    setNudged(true)
+    setNudging(false)
+    setTimeout(() => setNudged(false), 4000)
+  }
+
+  const getStreakForStat = (statCategoryId: string) => {
+    return streaks.find(s => s.stat_category_id === statCategoryId)
   }
 
   const taskStatusColor = (status: string) => {
@@ -133,11 +165,34 @@ export default function DashboardPage() {
               @{profile?.username}
             </h1>
           </div>
-          <button onClick={handleSignOut}
+          <button onClick={() => supabase.auth.signOut().then(() => router.push('/'))}
             className="text-sm px-4 py-2 rounded-xl border"
             style={{ borderColor: '#2D3158', color: '#64748B' }}>
             Sign out
           </button>
+        </div>
+
+        {/* Cycle banner */}
+        <div className="p-4 rounded-2xl border flex items-center justify-between"
+          style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
+          <div className="space-y-1">
+            <p className="text-xs tracking-widest uppercase"
+              style={{ color: '#64748B' }}>
+              CURRENT CYCLE
+            </p>
+            <p className="font-bold text-sm" style={{ color: '#F1F5F9' }}>
+              {cycleLabel}
+            </p>
+          </div>
+          <div className="text-right space-y-1">
+            <p className="font-black text-xl font-mono"
+              style={{ color: urgencyColor }}>
+              {daysLeft === 0 ? 'Today!' : `${daysLeft}d`}
+            </p>
+            <p className="text-xs" style={{ color: '#64748B' }}>
+              {daysLeft === 0 ? 'Cycle ends today' : 'until cycle ends'}
+            </p>
+          </div>
         </div>
 
         {/* Pending reviews banner */}
@@ -148,7 +203,7 @@ export default function DashboardPage() {
             style={{ backgroundColor: '#7C3AED' }}>
             <div>
               <p className="font-black text-sm" style={{ color: '#F1F5F9' }}>
-                {pendingReviews} submission{pendingReviews > 1 ? 's' : ''} waiting for your review
+                {pendingReviews} submission{pendingReviews > 1 ? 's' : ''} to review
               </p>
               <p className="text-xs mt-0.5" style={{ color: '#E2D9F3' }}>
                 Your Council members are waiting on you
@@ -168,54 +223,83 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Stats */}
+        {/* Stats with streaks */}
         <div className="space-y-4">
           <p className="text-xs tracking-[0.3em] uppercase"
             style={{ color: '#64748B' }}>YOUR STATS</p>
-          {stats.map(stat => (
-            <div key={stat.id} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{(stat as any).stat_categories?.icon}</span>
-                  <span className="font-bold text-sm" style={{ color: '#F1F5F9' }}>
-                    {(stat as any).stat_categories?.name}
+          {stats.map(stat => {
+            const streak = getStreakForStat(stat.stat_category_id)
+            const currentStreak = streak?.current_streak || 0
+            return (
+              <div key={stat.id} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">
+                      {(stat as any).stat_categories?.icon}
+                    </span>
+                    <span className="font-bold text-sm" style={{ color: '#F1F5F9' }}>
+                      {(stat as any).stat_categories?.name}
+                    </span>
+                    {currentStreak > 0 && (
+                      <span className="text-xs">
+                        {getStreakFlame(currentStreak)}
+                        <span className="ml-1 font-mono"
+                          style={{ color: '#F59E0B' }}>
+                          {currentStreak}w
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-mono text-sm font-bold"
+                    style={{ color: '#A3E635' }}>
+                    {stat.current_value}
                   </span>
                 </div>
-                <span className="font-mono text-sm font-bold"
-                  style={{ color: '#A3E635' }}>
-                  {stat.current_value}
-                </span>
+                <div className="w-full h-2 rounded-full"
+                  style={{ backgroundColor: '#0F1117' }}>
+                  <div className="h-2 rounded-full transition-all duration-700"
+                    style={{
+                      width: `${Math.max(stat.current_value, 2)}%`,
+                      backgroundColor: '#7C3AED',
+                    }} />
+                </div>
               </div>
-              <div className="w-full h-2 rounded-full"
-                style={{ backgroundColor: '#1B1F3B' }}>
-                <div className="h-2 rounded-full transition-all duration-700"
-                  style={{
-                    width: `${Math.max(stat.current_value, 2)}%`,
-                    backgroundColor: '#7C3AED',
-                  }} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Council */}
-        <div className="p-5 rounded-2xl border flex items-center justify-between"
+        <div className="p-5 rounded-2xl border space-y-3"
           style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
-          <div className="space-y-1">
-            <p className="text-xs tracking-widest uppercase"
-              style={{ color: '#7C3AED' }}>YOUR COUNCIL</p>
-            <p className="font-bold" style={{ color: '#F1F5F9' }}>
-              {councilCount === 0
-                ? 'No members yet'
-                : `${councilCount} active member${councilCount > 1 ? 's' : ''}`}
-            </p>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-xs tracking-widest uppercase"
+                style={{ color: '#7C3AED' }}>YOUR COUNCIL</p>
+              <p className="font-bold" style={{ color: '#F1F5F9' }}>
+                {councilCount === 0
+                  ? 'No members yet'
+                  : `${councilCount} active member${councilCount > 1 ? 's' : ''}`}
+              </p>
+            </div>
+            <Link href="/council"
+              className="px-4 py-2 rounded-xl font-bold text-sm
+                transition-all active:scale-95"
+              style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
+              Manage →
+            </Link>
           </div>
-          <Link href="/council"
-            className="px-4 py-2 rounded-xl font-bold text-sm
-              transition-all active:scale-95"
-            style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
-            Manage →
-          </Link>
+
+          {/* Nudge button */}
+          {councilCount > 0 && tasks.length > 0 && (
+            <button
+              onClick={handleNudge}
+              disabled={nudging || nudged}
+              className="w-full py-3 rounded-xl font-bold text-sm border
+                transition-all active:scale-95 disabled:opacity-60"
+              style={{ borderColor: '#2D3158', color: nudged ? '#A3E635' : '#64748B' }}>
+              {nudged ? '✓ Council nudged' : nudging ? 'Nudging...' : '👋 Nudge my Council'}
+            </button>
+          )}
         </div>
 
         {/* Tasks */}
@@ -233,7 +317,7 @@ export default function DashboardPage() {
           </div>
 
           {tasks.length === 0 ? (
-            <div className="p-5 rounded-2xl border border-dashed text-center space-y-2"
+            <div className="p-5 rounded-2xl border border-dashed text-center space-y-3"
               style={{ borderColor: '#2D3158' }}>
               <p className="font-bold" style={{ color: '#F1F5F9' }}>
                 No active tasks.
@@ -241,6 +325,14 @@ export default function DashboardPage() {
               <p className="text-sm" style={{ color: '#64748B' }}>
                 Your Council hasn't assigned anything yet.
               </p>
+              {councilCount === 0 && (
+                <Link href="/council"
+                  className="inline-block mt-1 px-5 py-2 rounded-xl
+                    font-bold text-sm"
+                  style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
+                  Build My Council →
+                </Link>
+              )}
             </div>
           ) : (
             tasks.map(task => (

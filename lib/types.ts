@@ -4,6 +4,8 @@ export type Profile = {
   full_name: string | null
   becoming_statement: string | null
   avatar_url: string | null
+  onboarding_complete: boolean
+  email_notifications: boolean
   created_at: string
   updated_at: string
 }
@@ -23,6 +25,16 @@ export type UserStat = {
   stat_categories?: StatCategory
 }
 
+export type Streak = {
+  id: string
+  user_id: string
+  stat_category_id: string
+  current_streak: number
+  longest_streak: number
+  last_completed_cycle: string | null
+  stat_categories?: StatCategory
+}
+
 export type Council = {
   id: string
   owner_id: string
@@ -34,6 +46,8 @@ export type CouncilMember = {
   id: string
   council_id: string
   member_id: string
+  invite_email?: string
+  invite_token?: string
   status: 'pending' | 'active' | 'removed'
   invited_at: string
   joined_at: string | null
@@ -49,6 +63,7 @@ export type Task = {
   title: string
   description: string | null
   due_date: string | null
+  cycle_week: string | null
   status: 'active' | 'submitted' | 'approved' | 'rejected'
   created_at: string
   stat_categories?: StatCategory

@@ -33,7 +33,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid decision' }, { status: 400 })
   }
 
-  // Get submission and verify reviewer is a council member
   const { data: submission } = await supabase
     .from('submissions')
     .select('id, task_id, user_id, status, tasks(council_id)')
@@ -74,7 +73,7 @@ export async function POST(request: Request) {
     comment: comment || null,
   })
 
-  // Update submission status — triggers the DB function
+  // Update submission — triggers DB streak + stat function
   await supabase
     .from('submissions')
     .update({
@@ -82,6 +81,14 @@ export async function POST(request: Request) {
       reviewed_at: new Date().toISOString(),
     })
     .eq('id', submission_id)
+
+  // Fire notification email
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  fetch(`${siteUrl}/api/notify-approved`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ submission_id }),
+  }).catch(() => {})
 
   return NextResponse.json({ success: true })
 }
