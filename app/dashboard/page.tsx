@@ -25,9 +25,11 @@ export default function DashboardPage() {
   const [streaks, setStreaks] = useState<Streak[]>([])
   const [councilCount, setCouncilCount] = useState(0)
   const [pendingReviews, setPendingReviews] = useState(0)
+  const [pendingRequests, setPendingRequests] = useState(0)
   const [loading, setLoading] = useState(true)
   const [nudging, setNudging] = useState(false)
   const [nudged, setNudged] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const daysLeft = getDaysUntilCycleEnd()
   const cycleLabel = getCycleLabel()
@@ -50,21 +52,18 @@ export default function DashboardPage() {
       }
       setProfile(profileData)
 
-      // Stats
       const { data: statsData } = await supabase
         .from('user_stats')
         .select('*, stat_categories(*)')
         .eq('user_id', user.id)
       if (statsData) setStats(statsData)
 
-      // Streaks
       const { data: streaksData } = await supabase
         .from('streaks')
         .select('*')
         .eq('user_id', user.id)
       if (streaksData) setStreaks(streaksData)
 
-      // Tasks
       const { data: tasksData } = await supabase
         .from('tasks')
         .select('*, stat_categories(*)')
@@ -73,7 +72,6 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
       if (tasksData) setTasks(tasksData)
 
-      // Council
       const { data: council } = await supabase
         .from('councils')
         .select('id')
@@ -117,6 +115,14 @@ export default function DashboardPage() {
         }
       }
 
+      // Pending council requests
+      const { count: reqCount } = await supabase
+        .from('council_requests')
+        .select('id', { count: 'exact' })
+        .eq('target_user_id', user.id)
+        .eq('status', 'pending')
+      setPendingRequests(reqCount || 0)
+
       setLoading(false)
     }
     load()
@@ -128,6 +134,13 @@ export default function DashboardPage() {
     setNudged(true)
     setNudging(false)
     setTimeout(() => setNudged(false), 4000)
+  }
+
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}/u/${profile?.username}`
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
   }
 
   const getStreakForStat = (statCategoryId: string) => {
@@ -165,11 +178,27 @@ export default function DashboardPage() {
               @{profile?.username}
             </h1>
           </div>
-          <button onClick={() => supabase.auth.signOut().then(() => router.push('/'))}
-            className="text-sm px-4 py-2 rounded-xl border"
-            style={{ borderColor: '#2D3158', color: '#64748B' }}>
-            Sign out
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopyLink}
+              className="text-sm px-3 py-2 rounded-xl border transition-all"
+              style={{
+                borderColor: copied ? '#A3E635' : '#2D3158',
+                color: copied ? '#A3E635' : '#64748B',
+              }}>
+              {copied ? '✓' : '↗'}
+            </button>
+            <Link href="/activity"
+              className="text-sm px-3 py-2 rounded-xl border"
+              style={{ borderColor: '#2D3158', color: '#64748B' }}>
+              Log
+            </Link>
+            <Link href="/settings"
+              className="text-sm px-3 py-2 rounded-xl border"
+              style={{ borderColor: '#2D3158', color: '#64748B' }}>
+              ⚙
+            </Link>
+          </div>
         </div>
 
         {/* Cycle banner */}
@@ -177,9 +206,7 @@ export default function DashboardPage() {
           style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
           <div className="space-y-1">
             <p className="text-xs tracking-widest uppercase"
-              style={{ color: '#64748B' }}>
-              CURRENT CYCLE
-            </p>
+              style={{ color: '#64748B' }}>CURRENT CYCLE</p>
             <p className="font-bold text-sm" style={{ color: '#F1F5F9' }}>
               {cycleLabel}
             </p>
@@ -190,12 +217,12 @@ export default function DashboardPage() {
               {daysLeft === 0 ? 'Today!' : `${daysLeft}d`}
             </p>
             <p className="text-xs" style={{ color: '#64748B' }}>
-              {daysLeft === 0 ? 'Cycle ends today' : 'until cycle ends'}
+              {daysLeft === 0 ? 'Cycle ends today' : 'until reset'}
             </p>
           </div>
         </div>
 
-        {/* Pending reviews banner */}
+        {/* Action banners */}
         {pendingReviews > 0 && (
           <Link href="/review"
             className="flex items-center justify-between p-4 rounded-2xl
@@ -206,14 +233,31 @@ export default function DashboardPage() {
                 {pendingReviews} submission{pendingReviews > 1 ? 's' : ''} to review
               </p>
               <p className="text-xs mt-0.5" style={{ color: '#E2D9F3' }}>
-                Your Council members are waiting on you
+                Your Council members are waiting
               </p>
             </div>
             <span style={{ color: '#F1F5F9' }}>→</span>
           </Link>
         )}
 
-        {/* Becoming statement */}
+        {pendingRequests > 0 && (
+          <Link href="/requests"
+            className="flex items-center justify-between p-4 rounded-2xl
+              border transition-all active:scale-95"
+            style={{ borderColor: '#A3E635' }}>
+            <div>
+              <p className="font-black text-sm" style={{ color: '#F1F5F9' }}>
+                {pendingRequests} Council request{pendingRequests > 1 ? 's' : ''}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                Someone wants to join your Council
+              </p>
+            </div>
+            <span style={{ color: '#A3E635' }}>→</span>
+          </Link>
+        )}
+
+        {/* Becoming */}
         <div className="p-5 rounded-2xl border"
           style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
           <p className="text-xs tracking-widest uppercase mb-2"
@@ -289,17 +333,43 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {/* Nudge button */}
           {councilCount > 0 && tasks.length > 0 && (
             <button
               onClick={handleNudge}
               disabled={nudging || nudged}
               className="w-full py-3 rounded-xl font-bold text-sm border
                 transition-all active:scale-95 disabled:opacity-60"
-              style={{ borderColor: '#2D3158', color: nudged ? '#A3E635' : '#64748B' }}>
-              {nudged ? '✓ Council nudged' : nudging ? 'Nudging...' : '👋 Nudge my Council'}
+              style={{
+                borderColor: '#2D3158',
+                color: nudged ? '#A3E635' : '#64748B'
+              }}>
+              {nudged ? '✓ Council nudged'
+                : nudging ? 'Nudging...'
+                : '👋 Nudge my Council'}
             </button>
           )}
+        </div>
+
+        {/* Share build */}
+        <div className="p-4 rounded-2xl border flex items-center justify-between"
+          style={{ borderColor: '#2D3158' }}>
+          <div className="space-y-1">
+            <p className="text-xs tracking-widest uppercase"
+              style={{ color: '#64748B' }}>MY BUILD</p>
+            <p className="text-sm font-bold" style={{ color: '#F1F5F9' }}>
+              statosphere.app/u/{profile?.username}
+            </p>
+          </div>
+          <button
+            onClick={handleCopyLink}
+            className="px-4 py-2 rounded-xl font-bold text-sm
+              transition-all active:scale-95"
+            style={{
+              backgroundColor: copied ? '#A3E635' : '#1B1F3B',
+              color: copied ? '#0F1117' : '#F1F5F9',
+            }}>
+            {copied ? '✓ Copied' : '↗ Share'}
+          </button>
         </div>
 
         {/* Tasks */}
@@ -327,8 +397,7 @@ export default function DashboardPage() {
               </p>
               {councilCount === 0 && (
                 <Link href="/council"
-                  className="inline-block mt-1 px-5 py-2 rounded-xl
-                    font-bold text-sm"
+                  className="inline-block mt-1 px-5 py-2 rounded-xl font-bold text-sm"
                   style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
                   Build My Council →
                 </Link>
