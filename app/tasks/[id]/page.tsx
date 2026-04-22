@@ -205,9 +205,21 @@ export default function TaskDetailPage() {
               onChange={e => setFile(e.target.files?.[0] || null)}
             />
 
-            <button onClick={handleSubmit} disabled={loading}>
-              {loading ? 'Submitting...' : 'Submit'}
+            <button
+              onClick={handleSubmit}
+              disabled={loading || (!note.trim() && !file)}
+              className="w-full py-4 px-6 rounded-2xl font-bold text-base
+                tracking-wide transition-all active:scale-95 disabled:opacity-40"
+              style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
+              {loading ? 'Submitting...' : 'Submit to Council →'}
             </button>
+
+            {/* Show hint when nothing entered */}
+            {!note.trim() && !file && (
+              <p className="text-xs text-center" style={{ color: '#64748B' }}>
+                Add a note or photo to submit
+              </p>
+            )}
           </div>
         )}
 

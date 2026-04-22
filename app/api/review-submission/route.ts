@@ -1,17 +1,29 @@
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase'
 
 export async function POST(request: Request) {
-  const supabase = createSupabaseServerClient()
+  const cookieStore = await cookies()
 
-  // ✅ Auth
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
 
-  const body = await request.json()
-  const { submission_id, decision, comment } = body
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { submission_id, decision, comment } = await request.json()
 
   if (!submission_id || !decision) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -21,77 +33,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid decision' }, { status: 400 })
   }
 
-  // ✅ Fetch submission + task
-  const { data: submission, error: submissionError } = await supabase
+  const { data: submission } = await supabase
     .from('submissions')
-    .select(`
-      id,
-      task_id,
-      user_id,
-      status,
-      tasks (
-        id,
-        council_id,
-        assigned_to,
-        assigned_by
-      )
-    `)
+    .select('id, task_id, user_id, status, tasks(council_id)')
     .eq('id', submission_id)
     .single()
 
-  if (submissionError || !submission) {
-    return NextResponse.json({ error: 'Submission not found' }, { status: 404 })
-  }
+  if (!submission) return NextResponse.json({ error: 'Submission not found' }, { status: 404 })
+  if (submission.status !== 'pending') return NextResponse.json({ error: 'Already reviewed' }, { status: 400 })
 
-  if (submission.status !== 'pending') {
-    return NextResponse.json({ error: 'Already reviewed' }, { status: 400 })
-  }
+  const councilId = (submission as any).tasks?.council_id
 
-  const task = submission.tasks
-  const councilId = task?.council_id
-
-  if (!task || !councilId) {
-    return NextResponse.json({ error: 'Invalid task data' }, { status: 500 })
-  }
-
-  // ❌ Prevent self-review (IMPORTANT)
-  if (submission.user_id === user.id) {
-    return NextResponse.json({ error: 'Cannot review your own submission' }, { status: 403 })
-  }
-
-  // ✅ Check permissions
+  // Check owner OR member — both can review
   const { data: council } = await supabase
     .from('councils')
     .select('owner_id')
     .eq('id', councilId)
     .single()
 
-  const { data: membership } = await supabase
-    .from('council_members')
-    .select('id')
-    .eq('council_id', councilId)
-    .eq('member_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle()
-
   const isOwner = council?.owner_id === user.id
-  const isMember = !!membership
+
+  let isMember = false
+  if (!isOwner) {
+    const { data: membership } = await supabase
+      .from('council_members')
+      .select('id')
+      .eq('council_id', councilId)
+      .eq('member_id', user.id)
+      .eq('status', 'active')
+      .single()
+    isMember = !!membership
+  }
 
   if (!isOwner && !isMember) {
     return NextResponse.json({ error: 'Not authorised to review' }, { status: 403 })
   }
 
-  // ✅ Insert feedback (now supports type)
+  // Insert feedback
   await supabase.from('feedback').insert({
     submission_id,
     reviewer_id: user.id,
-    type: 'review',
     decision,
     comment: comment || null,
   })
 
-  // ✅ Update submission
-  const { error: updateError } = await supabase
+  // Update submission — triggers DB streak + stat function
+  await supabase
     .from('submissions')
     .update({
       status: decision,
@@ -99,49 +86,13 @@ export async function POST(request: Request) {
     })
     .eq('id', submission_id)
 
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
-  }
-
-  // ✅ If approved → create pending stat change (NEW CORE LOGIC)
-  if (decision === 'approved') {
-    await supabase.from('pending_stat_changes').insert({
-      user_id: submission.user_id,
-      stat_category_id: task.stat_category_id,
-      delta: 1, // you can scale this later
-      source: 'task',
-      source_id: task.id,
-      applied: false,
-    }).catch(() => {})
-  }
-
-  // ✅ Mark task completed if approved
-  if (decision === 'approved') {
-    await supabase
-      .from('tasks')
-      .update({ status: 'completed' })
-      .eq('id', task.id)
-      .catch(() => {})
-  }
-
-  // ✅ Track reviewer activity
-  await supabase
-    .from('council_activity')
-    .upsert({
-      council_member_id: membership?.id,
-      last_active_at: new Date().toISOString()
-    })
-    .catch(() => {})
-
-  // ✅ Fire notification (non-blocking)
+  // Fire notification email
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-  if (siteUrl) {
-    fetch(`${siteUrl}/api/notify-approved`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submission_id }),
-    }).catch(() => {})
-  }
+  fetch(`${siteUrl}/api/notify-approved`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ submission_id }),
+  }).catch(() => {})
 
   return NextResponse.json({ success: true })
 }

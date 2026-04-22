@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   const { token } = await request.json()
   if (!token) return NextResponse.json({ error: 'Token required' }, { status: 400 })
 
+  // Find the invite
   const { data: invite } = await supabase
     .from('council_members')
     .select('id, council_id, status, invite_email')
@@ -35,7 +36,20 @@ export async function POST(request: Request) {
   if (!invite) return NextResponse.json({ error: 'Invalid invite' }, { status: 400 })
   if (invite.status === 'active') return NextResponse.json({ error: 'Already accepted' }, { status: 400 })
 
-  await supabase
+  // Security check — verify the logged in user's email matches the invite
+  const { data: authUser } = await supabase.auth.getUser()
+  const userEmail = authUser.user?.email?.toLowerCase()
+  const inviteEmail = invite.invite_email?.toLowerCase()
+
+  if (inviteEmail && userEmail && userEmail !== inviteEmail) {
+    return NextResponse.json(
+      { error: 'This invite was sent to a different email address.' },
+      { status: 403 }
+    )
+  }
+
+  // Activate the member
+  const { error: updateError } = await supabase
     .from('council_members')
     .update({
       member_id: user.id,
@@ -43,6 +57,10 @@ export async function POST(request: Request) {
       joined_at: new Date().toISOString(),
     })
     .eq('id', invite.id)
+
+  if (updateError) {
+    return NextResponse.json({ error: 'Failed to accept invite' }, { status: 500 })
+  }
 
   const { data: council } = await supabase
     .from('councils')
@@ -53,6 +71,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     success: true,
     council_id: invite.council_id,
-    owner_id: council?.owner_id
+    owner_id: council?.owner_id,
   })
 }

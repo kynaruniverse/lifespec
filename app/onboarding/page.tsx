@@ -60,7 +60,7 @@ export default function OnboardingPage() {
     if (!userId || !username.trim()) return
     setLoading(true)
     setUsernameError('')
-
+  
     // Check username unique
     const { data: existing } = await supabase
       .from('profiles')
@@ -68,13 +68,13 @@ export default function OnboardingPage() {
       .eq('username', username.toLowerCase().trim())
       .neq('id', userId)
       .single()
-
+  
     if (existing) {
       setUsernameError('That username is taken. Try another.')
       setLoading(false)
       return
     }
-
+  
     // Update profile
     const { error: profileError } = await supabase
       .from('profiles')
@@ -85,12 +85,13 @@ export default function OnboardingPage() {
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId)
-
+  
     if (profileError) {
+      setUsernameError('Something went wrong saving your profile. Please try again.')
       setLoading(false)
       return
     }
-
+  
     // Insert selected stats
     if (selectedStats.length > 0) {
       const statRows = selectedStats.map(statId => ({
@@ -98,9 +99,18 @@ export default function OnboardingPage() {
         stat_category_id: statId,
         current_value: 0,
       }))
-      await supabase.from('user_stats').insert(statRows)
+  
+      const { error: statsError } = await supabase
+        .from('user_stats')
+        .insert(statRows)
+  
+      if (statsError) {
+        setUsernameError('Profile saved but stats failed to save. Please try again.')
+        setLoading(false)
+        return
+      }
     }
-
+  
     router.push('/dashboard')
   }
 
@@ -305,11 +315,12 @@ export default function OnboardingPage() {
                   }}
                 />
               </div>
-              {usernameError && (
-                <p className="text-sm" style={{ color: '#EF4444' }}>
-                  {usernameError}
-                </p>
-              )}
+            {usernameError && (
+              <p className="text-sm p-3 rounded-xl"
+                style={{ color: '#EF4444', backgroundColor: '#1B1F3B' }}>
+                {usernameError}
+              </p>
+            )}
               <p className="text-xs" style={{ color: '#64748B' }}>
                 Letters, numbers, underscores only. Max 20 characters.
               </p>
