@@ -12,8 +12,10 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<any>(null)
   const [submission, setSubmission] = useState<any>(null)
   const [userId, setUserId] = useState<string>('')
+
   const [note, setNote] = useState('')
   const [file, setFile] = useState<File | null>(null)
+
   const [loading, setLoading] = useState(false)
   const [pageLoading, setPageLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
@@ -21,18 +23,32 @@ export default function TaskDetailPage() {
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
       setUserId(user.id)
 
-      const { data: taskData } = await supabase
+      // 🔥 Load task
+      const { data: taskData, error: taskError } = await supabase
         .from('tasks')
-        .select('*, stat_categories(*), assigner:profiles!tasks_assigned_by_fkey(full_name, username)')
+        .select(`
+          *,
+          stat_categories(*),
+          assigner:profiles!tasks_assigned_by_fkey(full_name, username)
+        `)
         .eq('id', taskId)
         .single()
 
-      if (!taskData) { router.push('/dashboard'); return }
+      if (taskError || !taskData) {
+        router.push('/dashboard')
+        return
+      }
+
       setTask(taskData)
 
+      // 🔥 Load latest submission safely
       const { data: subData } = await supabase
         .from('submissions')
         .select('*, feedback(*)')
@@ -40,33 +56,51 @@ export default function TaskDetailPage() {
         .eq('user_id', user.id)
         .order('submitted_at', { ascending: false })
         .limit(1)
-        .single()
 
-      if (subData) setSubmission(subData)
+      if (subData && subData.length > 0) {
+        setSubmission(subData[0])
+      }
+
       setPageLoading(false)
     }
+
     load()
   }, [taskId, router])
 
   const handleSubmit = async () => {
     if (!note.trim() && !file) return
+    if (!task || task.assigned_to !== userId) return
+
     setLoading(true)
 
     let mediaUrl: string | null = null
 
+    // ✅ Upload media
     if (file) {
       const ext = file.name.split('.').pop()
       const path = `${userId}/${taskId}-${Date.now()}.${ext}`
+
       const { error: uploadError } = await supabase.storage
         .from('submissions')
         .upload(path, file)
 
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage
-          .from('submissions')
-          .getPublicUrl(path)
-        mediaUrl = urlData.publicUrl
+      if (uploadError) {
+        console.error(uploadError)
+        setLoading(false)
+        return
       }
+
+      const { data: urlData } = supabase.storage
+        .from('submissions')
+        .getPublicUrl(path)
+
+      mediaUrl = urlData.publicUrl
+    }
+
+    // ❌ Prevent duplicate pending submissions
+    if (submission?.status === 'pending') {
+      setLoading(false)
+      return
     }
 
     const { data: newSubmission, error } = await supabase
@@ -82,12 +116,6 @@ export default function TaskDetailPage() {
       .single()
 
     if (!error && newSubmission) {
-      // Update task status to submitted
-      await supabase
-        .from('tasks')
-        .update({ status: 'submitted' })
-        .eq('id', taskId)
-
       setSubmission(newSubmission)
       setSubmitted(true)
     }
@@ -111,12 +139,14 @@ export default function TaskDetailPage() {
     return status
   }
 
-  if (pageLoading) return (
-    <main className="min-h-screen flex items-center justify-center"
-      style={{ backgroundColor: '#0F1117' }}>
-      <p style={{ color: '#64748B' }}>Loading task...</p>
-    </main>
-  )
+  if (pageLoading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: '#0F1117' }}>
+        <p style={{ color: '#64748B' }}>Loading task...</p>
+      </main>
+    )
+  }
 
   if (!task) return null
 
@@ -130,188 +160,73 @@ export default function TaskDetailPage() {
       <div className="max-w-md mx-auto space-y-6">
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <Link href="/dashboard"
-            className="text-sm px-4 py-2 rounded-xl border"
-            style={{ borderColor: '#2D3158', color: '#64748B' }}>
-            ← Back
-          </Link>
-          <span className="text-xs font-bold px-3 py-1 rounded-full"
-            style={{
-              backgroundColor: '#1B1F3B',
-              color: statusColor(task.status)
-            }}>
+        <div className="flex justify-between">
+          <Link href="/dashboard">← Back</Link>
+          <span style={{ color: statusColor(task.status) }}>
             {statusLabel(task.status)}
           </span>
         </div>
 
-        {/* Task card */}
-        <div className="p-5 rounded-2xl border space-y-3"
-          style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
-          <div className="flex items-center gap-2">
-            <span className="text-xl">{task.stat_categories?.icon}</span>
-            <span className="text-xs font-bold tracking-widest uppercase"
-              style={{ color: '#7C3AED' }}>
-              {task.stat_categories?.name}
-            </span>
-          </div>
-          <h1 className="text-xl font-black" style={{ color: '#F1F5F9' }}>
-            {task.title}
-          </h1>
-          {task.description && (
-            <p className="text-sm leading-relaxed" style={{ color: '#64748B' }}>
-              {task.description}
-            </p>
-          )}
+        {/* Task */}
+        <div>
+          <h1>{task.title}</h1>
           {task.assigner && (
-            <p className="text-xs" style={{ color: '#64748B' }}>
+            <p>
               Assigned by{' '}
-              <span style={{ color: '#F1F5F9' }}>
+              <strong>
                 {task.assigner.full_name || `@${task.assigner.username}`}
-              </span>
-            </p>
-          )}
-          {task.due_date && (
-            <p className="text-xs" style={{ color: '#64748B' }}>
-              Due{' '}
-              <span style={{ color: '#F1F5F9' }}>
-                {new Date(task.due_date).toLocaleDateString('en-GB', {
-                  weekday: 'long', day: 'numeric', month: 'short'
-                })}
-              </span>
+              </strong>
             </p>
           )}
         </div>
 
-        {/* Previous submission result */}
-        {submission && !submitted && (
-          <div className="p-5 rounded-2xl border space-y-3"
-            style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
-            <p className="text-xs tracking-widest uppercase"
-              style={{ color: '#64748B' }}>
-              YOUR SUBMISSION
-            </p>
-            <span className="inline-block text-sm font-bold px-3 py-1 rounded-full"
-              style={{
-                backgroundColor: '#0F1117',
-                color: statusColor(submission.status)
-              }}>
-              {statusLabel(submission.status)}
-            </span>
-            {submission.note && (
-              <p className="text-sm leading-relaxed" style={{ color: '#F1F5F9' }}>
-                "{submission.note}"
-              </p>
-            )}
+        {/* Existing submission */}
+        {submission && (
+          <div>
+            <p>{statusLabel(submission.status)}</p>
+            {submission.note && <p>"{submission.note}"</p>}
             {submission.media_url && (
-              <img src={submission.media_url} alt="Submission proof"
-                className="w-full rounded-xl object-cover max-h-48" />
-            )}
-            {submission.feedback?.length > 0 && (
-              <div className="pt-2 border-t space-y-2"
-                style={{ borderColor: '#2D3158' }}>
-                <p className="text-xs tracking-widest uppercase"
-                  style={{ color: '#64748B' }}>
-                  COUNCIL FEEDBACK
-                </p>
-                {submission.feedback.map((f: any) => (
-                  <p key={f.id} className="text-sm leading-relaxed"
-                    style={{ color: '#F1F5F9' }}>
-                    "{f.comment}"
-                  </p>
-                ))}
-              </div>
+              <img src={submission.media_url} alt="" />
             )}
           </div>
         )}
 
-        {/* Submit form */}
+        {/* Submit */}
         {canSubmit && !hasPendingSubmission && !submitted && (
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <p className="text-xs tracking-[0.3em] uppercase"
-                style={{ color: '#64748B' }}>
-                SHOW YOUR WORK
-              </p>
-              <p className="text-sm" style={{ color: '#64748B' }}>
-                This doesn't have to be perfect. It has to be real.
-              </p>
-            </div>
+          <div>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="What did you do?"
+            />
 
-            <div className="space-y-3">
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder="Describe what you did, how it went, what you felt..."
-                rows={4}
-                className="w-full px-4 py-4 rounded-2xl text-base outline-none
-                  border resize-none leading-relaxed"
-                style={{
-                  backgroundColor: '#1B1F3B',
-                  borderColor: note.length > 0 ? '#7C3AED' : '#2D3158',
-                  color: '#F1F5F9',
-                }}
-              />
+            <input
+              type="file"
+              onChange={e => setFile(e.target.files?.[0] || null)}
+            />
 
-              {/* Photo upload */}
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={e => setFile(e.target.files?.[0] || null)}
-                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                />
-                <div className="w-full py-3 px-4 rounded-2xl border text-center text-sm"
-                  style={{
-                    backgroundColor: '#1B1F3B',
-                    borderColor: file ? '#7C3AED' : '#2D3158',
-                    color: file ? '#F1F5F9' : '#64748B'
-                  }}>
-                  {file ? `📎 ${file.name}` : '+ Add a photo (optional)'}
-                </div>
-              </div>
-
-              <button
-                onClick={handleSubmit}
-                disabled={loading || (!note.trim() && !file)}
-                className="w-full py-4 px-6 rounded-2xl font-bold text-base
-                  tracking-wide transition-all active:scale-95 disabled:opacity-40"
-                style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
-                {loading ? 'Submitting...' : 'Submit to Council →'}
-              </button>
-            </div>
+            <button onClick={handleSubmit} disabled={loading}>
+              {loading ? 'Submitting...' : 'Submit'}
+            </button>
           </div>
         )}
 
-        {/* Submitted success state */}
+        {/* Success */}
         {submitted && (
-          <div className="p-5 rounded-2xl border text-center space-y-3"
-            style={{ backgroundColor: '#1B1F3B', borderColor: '#2D3158' }}>
-            <p className="text-2xl">✓</p>
-            <p className="font-black text-lg" style={{ color: '#F1F5F9' }}>
-              Submitted to your Council.
+          <div>
+            <p>Submitted to your Council.</p>
+            <p>
+              {task.assigner
+                ? `Now ${task.assigner.full_name || 'they'} will review it.`
+                : 'They will review it soon.'}
             </p>
-            <p className="text-sm" style={{ color: '#64748B' }}>
-              They'll review it and get back to you.
-            </p>
-            <Link href="/dashboard"
-              className="block mt-2 py-3 px-6 rounded-xl font-bold text-sm"
-              style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
-              Back to Dashboard
-            </Link>
           </div>
         )}
 
-        {/* Pending — waiting on council */}
+        {/* Waiting */}
         {hasPendingSubmission && !submitted && (
-          <div className="p-5 rounded-2xl border text-center space-y-2"
-            style={{ borderColor: '#2D3158' }}>
-            <p className="font-bold" style={{ color: '#F1F5F9' }}>
-              Awaiting Council review.
-            </p>
-            <p className="text-sm" style={{ color: '#64748B' }}>
-              You'll be notified when they respond.
-            </p>
+          <div>
+            <p>Waiting for your Council.</p>
           </div>
         )}
 

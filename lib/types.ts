@@ -25,6 +25,18 @@ export type UserStat = {
   stat_categories?: StatCategory
 }
 
+// ✅ NEW: Pending stat changes (for cycle-based updates)
+export type PendingStatChange = {
+  id: string
+  user_id: string
+  stat_category_id: string
+  delta: number
+  source: 'task'
+  source_id: string
+  created_at: string
+  applied: boolean
+}
+
 export type Streak = {
   id: string
   user_id: string
@@ -33,6 +45,15 @@ export type Streak = {
   longest_streak: number
   last_completed_cycle: string | null
   stat_categories?: StatCategory
+}
+
+// ✅ NEW: Weekly cycle system
+export type WeeklyCycle = {
+  id: string
+  user_id: string
+  start_date: string
+  end_date: string
+  status: 'active' | 'completed'
 }
 
 export type Council = {
@@ -54,6 +75,14 @@ export type CouncilMember = {
   profiles?: Profile
 }
 
+// ✅ NEW: Track council engagement/activity
+export type CouncilActivity = {
+  id: string
+  council_member_id: string
+  last_active_at: string
+}
+
+// ✅ UPDATED: Task status simplified
 export type Task = {
   id: string
   council_id: string
@@ -64,12 +93,13 @@ export type Task = {
   description: string | null
   due_date: string | null
   cycle_week: string | null
-  status: 'active' | 'submitted' | 'approved' | 'rejected'
+  status: 'active' | 'completed' | 'expired'
   created_at: string
   stat_categories?: StatCategory
   assigner?: Profile
 }
 
+// ✅ Submission handles approval state (separate from task)
 export type Submission = {
   id: string
   task_id: string
@@ -82,11 +112,22 @@ export type Submission = {
   tasks?: Task
 }
 
+// ✅ UPDATED: Feedback supports comments + reviews
 export type Feedback = {
   id: string
   submission_id: string
   reviewer_id: string
-  decision: 'approved' | 'rejected' | 'needs_more'
+  type: 'review' | 'comment'
+  decision?: 'approved' | 'rejected' | 'needs_more'
   comment: string | null
   created_at: string
+}
+
+// ✅ NEW: Task templates (for low-friction assignment)
+export type TaskTemplate = {
+  id: string
+  title: string
+  description: string | null
+  stat_category_id: string
+  suggested_value: number
 }

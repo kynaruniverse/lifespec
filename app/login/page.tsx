@@ -11,10 +11,14 @@ export default function LoginPage() {
   const handleLogin = async () => {
     if (!email) return
     setLoading(true)
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` }
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     })
+
     if (!error) setSent(true)
     setLoading(false)
   }
@@ -27,14 +31,11 @@ export default function LoginPage() {
           CHECK YOUR EMAIL
         </p>
         <h1 className="text-3xl font-black" style={{ color: '#F1F5F9' }}>
-          Your link is on its way.
+          Magic link sent.
         </h1>
         <p style={{ color: '#64748B' }}>
-          We sent a magic link to<br />
+          Open the link we sent to<br />
           <span style={{ color: '#F1F5F9' }}>{email}</span>
-        </p>
-        <p className="text-sm" style={{ color: '#64748B' }}>
-          Click the link in your email to enter Statosphere.
         </p>
       </div>
     </main>
@@ -54,40 +55,32 @@ export default function LoginPage() {
           </h1>
         </div>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" style={{ color: '#64748B' }}>
-              Email address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="you@example.com"
-              className="w-full px-4 py-4 rounded-2xl text-base outline-none border"
-              style={{
-                backgroundColor: '#1B1F3B',
-                borderColor: '#2D3158',
-                color: '#F1F5F9',
-              }}
-            />
-          </div>
+        <input
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          placeholder="you@example.com"
+          className="w-full px-4 py-4 rounded-2xl border outline-none"
+          style={{
+            backgroundColor: '#1B1F3B',
+            borderColor: '#2D3158',
+            color: '#F1F5F9',
+          }}
+        />
 
-          <button
-            onClick={handleLogin}
-            disabled={loading || !email}
-            className="w-full py-4 px-6 rounded-2xl font-bold text-base
-              tracking-wide transition-all active:scale-95 disabled:opacity-50"
-            style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
-            {loading ? 'Sending...' : 'Send Magic Link →'}
-          </button>
-        </div>
+        <button
+          onClick={handleLogin}
+          disabled={loading || !email}
+          className="w-full py-4 rounded-2xl font-bold transition-all disabled:opacity-50"
+          style={{ backgroundColor: '#7C3AED', color: '#F1F5F9' }}>
+          {loading ? 'Sending...' : 'Send Magic Link →'}
+        </button>
 
         <p className="text-center text-sm" style={{ color: '#64748B' }}>
           No account?{' '}
           <Link href="/signup" style={{ color: '#A3E635' }}>
-            Begin your build
+            Create one
           </Link>
         </p>
 
