@@ -25,7 +25,6 @@ export async function middleware(req: NextRequest) {
 
   const path = req.nextUrl.pathname
 
-  const isAuthPage = path === '/login' || path === '/signup'
   const isProtected =
     path.startsWith('/dashboard') ||
     path.startsWith('/review') ||
@@ -36,20 +35,15 @@ export async function middleware(req: NextRequest) {
     path.startsWith('/settings') ||
     path.startsWith('/requests')
 
-  if (!isProtected && !isAuthPage) {
-    return res
-  }
+  if (!isProtected) return res
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user && isProtected) {
-    const loginUrl = new URL('/login', req.url)
-    loginUrl.searchParams.set('next', path)
-    return NextResponse.redirect(loginUrl)
-  }
-
-  if (user && isAuthPage) {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
+  if (!user) {
+    // Redirect to home page (which handles auth inline)
+    const homeUrl = new URL('/', req.url)
+    homeUrl.searchParams.set('next', path)
+    return NextResponse.redirect(homeUrl)
   }
 
   return res
@@ -65,7 +59,5 @@ export const config = {
     '/activity/:path*',
     '/settings/:path*',
     '/requests/:path*',
-    '/login',
-    '/signup',
   ],
 }
