@@ -116,7 +116,7 @@ export default function OnboardingPage() {
       .from('councils').insert({ owner_id: userId }).select('id').single()
 
     setLoading(false)
-    setTimeout(() => router.replace('/dashboard'), 500)
+    window.location.href = '/dashboard'
   }
 
   const progress = (step / TOTAL_STEPS) * 100

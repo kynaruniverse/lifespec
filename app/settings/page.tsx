@@ -214,7 +214,7 @@ export default function SettingsPage() {
         {/* Account */}
         <SectionLabel>Account</SectionLabel>
         <button
-          onClick={() => supabase.auth.signOut().then(() => router.push('/'))}
+          onClick={() => supabase.auth.signOut().then(() => { window.location.href = '/' })}
           style={{
             width: '100%', padding: '13px 20px',
             background: 'transparent', color: VR.rejected,
