@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
-import { getCycleKey } from '@/lib/cycle'
+import { getCurrentCycleWeek } from '@/lib/cycle'
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient()
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       title: trimmedTitle,
       description: description?.trim() || null,
       due_date: due_date || null,
-      cycle_week: getCycleKey(),
+      cycle_week: getCurrentCycleWeek(),
       status: 'active',
     })
     .select()
