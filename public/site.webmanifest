@@ -4,8 +4,8 @@
   "description": "Your personal growth, structured by people who know you.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0F1117",
-  "theme_color": "#0F1117",
+  "background_color": "#EBF0E5",
+  "theme_color": "#EBF0E5",
   "orientation": "portrait",
   "icons": [
     {
